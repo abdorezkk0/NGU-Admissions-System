@@ -1,23 +1,22 @@
-# Dependencies
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # Environment variables
 .env
 .env.local
-.env.production
+.env.*.local
+
+# Dependencies
+node_modules/
+package-lock.json
 
 # Logs
 logs/
 *.log
+npm-debug.log*
 
-# Uploads
-uploads/*
-!uploads/.gitkeep
+# Uploaded files
+uploads/
+temp/
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
@@ -28,9 +27,13 @@ Thumbs.db
 *.swo
 
 # Build
-frontend/build/
-frontend/dist/
+dist/
+build/
 
 # Testing
 coverage/
 .nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
