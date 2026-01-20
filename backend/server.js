@@ -8,6 +8,9 @@ const logger = require('./shared/middleware/requestLogger');
 const errorHandler = require('./shared/middleware/errorHandler');
 const { apiLimiter } = require('./shared/middleware/rateLimiter');
 
+// Import routes
+const authRoutes = require('./modules/auth/routes/authRoutes');
+
 // Initialize Express app
 const app = express();
 
@@ -48,7 +51,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes (will add modules here)
+// API info endpoint
 app.get('/api', (req, res) => {
   res.status(200).json({
     success: true,
@@ -64,6 +67,9 @@ app.get('/api', (req, res) => {
     },
   });
 });
+
+// Register module routes
+app.use('/api/auth', authRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {
@@ -97,7 +103,8 @@ const startServer = async () => {
       console.log(`📝 Environment: ${config.NODE_ENV}`);
       console.log(`🌐 Frontend URL: ${config.FRONTEND_URL}`);
       console.log(`\n📚 API Documentation: http://localhost:${PORT}/api`);
-      console.log(`💚 Health Check: http://localhost:${PORT}/health\n`);
+      console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+      console.log(`🔐 Auth Endpoints: http://localhost:${PORT}/api/auth\n`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);
