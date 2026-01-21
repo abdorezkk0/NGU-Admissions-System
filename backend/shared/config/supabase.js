@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('./environment');
 
-// Polyfill fetch for Node.js if needed
+// Polyfill fetch for Node.js if needed (Node < 18)
 if (!globalThis.fetch) {
   globalThis.fetch = require('node-fetch');
 }
@@ -31,29 +31,26 @@ const supabase = createClient(
   }
 );
 
-// Test connection function
+// 🔹 Test connection + storage access
 const testSupabaseConnection = async () => {
   try {
     console.log('🔗 Testing Supabase connection...');
     console.log('   URL:', config.SUPABASE_URL);
     console.log('   Using SERVICE_ROLE key:', config.SUPABASE_SERVICE_KEY.substring(0, 20) + '...');
-    
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('count')
-      .limit(1);
-    
+
+    // ✅ Correct test for File Storage
+    const { data, error } = await supabase.storage.listBuckets();
+
     if (error) {
-      if (error.code === 'PGRST116') {
-        console.log('⚠️  Supabase connected but "profiles" table doesn\'t exist');
-        console.log('   Run the SQL setup in Supabase SQL Editor\n');
-      } else {
-        console.error('❌ Supabase error:', error);
-        throw error;
-      }
-    } else {
-      console.log('✅ Supabase Connected\n');
+      console.error('❌ Supabase Storage error:', error);
+      throw error;
     }
+
+    console.log('✅ Supabase Connected');
+    console.log('📦 Buckets found:', data.map(b => b.name).join(', ') || 'No buckets yet');
+    console.log('   Default bucket:', config.SUPABASE_BUCKET || 'documents');
+    console.log('');
+
   } catch (error) {
     console.error('❌ Supabase connection failed:', error.message);
     console.error('   Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env\n');

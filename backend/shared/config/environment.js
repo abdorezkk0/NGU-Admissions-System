@@ -7,12 +7,15 @@ const config = {
   
   // MongoDB
   MONGODB_URI: process.env.MONGODB_URI,
-  
+
   // Supabase
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
-  
+
+  // 🔹 ADD THIS
+  SUPABASE_BUCKET: process.env.SUPABASE_BUCKET || 'documents',
+
   // JWT
   JWT_SECRET: process.env.JWT_SECRET || 'fallback-secret-for-dev-only',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
@@ -27,7 +30,9 @@ const config = {
   MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
   ALLOWED_FILE_TYPES: process.env.ALLOWED_FILE_TYPES || 'pdf,jpg,jpeg,png,doc,docx',
   UPLOAD_PATH: process.env.UPLOAD_PATH || './uploads',
-  STORAGE_PROVIDER: process.env.STORAGE_PROVIDER || 'local',
+
+  // 🔹 STORAGE PROVIDER SWITCH
+  STORAGE_PROVIDER: process.env.STORAGE_PROVIDER || 'local', // "local" or "supabase"
 };
 
 // Validate critical environment variables

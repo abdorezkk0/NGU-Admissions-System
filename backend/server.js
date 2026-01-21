@@ -7,12 +7,18 @@ const { testSupabaseConnection } = require('./shared/config/supabase');
 const logger = require('./shared/middleware/requestLogger');
 const errorHandler = require('./shared/middleware/errorHandler');
 const { apiLimiter } = require('./shared/middleware/rateLimiter');
+const storageRoutes = require('./modules/file-storage/routes/storageRoutes');
+const documentRoutes = require('./modules/documents/routes/documentRoutes');
 
 // Import routes
 const authRoutes = require('./modules/auth/routes/authRoutes');
 
 // Initialize Express app
 const app = express();
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/api/files', storageRoutes);
+app.use('/api/documents', documentRoutes);
 
 // ============================================
 // MIDDLEWARE
