@@ -31,6 +31,7 @@ class ApplicationService {
         high_school_graduation_year: applicationData.highSchoolGraduationYear,
         high_school_gpa: applicationData.highSchoolGpa,
         high_school_country: applicationData.highSchoolCountry,
+        courses: applicationData.courses || [], // ← ADD THIS
         eligibility_status: 'pending',
         decision: 'pending',
       };
@@ -139,6 +140,7 @@ class ApplicationService {
         high_school_graduation_year: updates.highSchoolGraduationYear,
         high_school_gpa: updates.highSchoolGpa,
         high_school_country: updates.highSchoolCountry,
+        courses: updates.courses, // ← ADD THIS
         updated_at: new Date().toISOString(),
       };
 
@@ -155,9 +157,11 @@ class ApplicationService {
         .single();
 
       if (error) {
+        console.error('❌ Update error:', error);
         throw new AppError('Failed to update application', 500);
       }
 
+      console.log('✅ Application updated:', data.id);
       return this.formatApplication(data);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -191,6 +195,7 @@ class ApplicationService {
         .single();
 
       if (error) {
+        console.error('❌ Submit error:', error);
         throw new AppError('Failed to submit application', 500);
       }
 
@@ -219,9 +224,11 @@ class ApplicationService {
         .eq('id', applicationId);
 
       if (error) {
+        console.error('❌ Delete error:', error);
         throw new AppError('Failed to delete application', 500);
       }
 
+      console.log('✅ Application deleted:', applicationId);
       return true;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -244,6 +251,7 @@ class ApplicationService {
         .from('applications')
         .update({
           status: 'withdrawn',
+          withdrawn_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', applicationId)
@@ -251,9 +259,11 @@ class ApplicationService {
         .single();
 
       if (error) {
+        console.error('❌ Withdraw error:', error);
         throw new AppError('Failed to withdraw application', 500);
       }
 
+      console.log('✅ Application withdrawn:', data.id);
       return this.formatApplication(data);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -294,6 +304,7 @@ class ApplicationService {
       const { data, error, count } = await query;
 
       if (error) {
+        console.error('❌ Fetch all applications error:', error);
         throw new AppError('Failed to fetch applications', 500);
       }
 
@@ -339,9 +350,11 @@ class ApplicationService {
         .single();
 
       if (error) {
+        console.error('❌ Status update error:', error);
         throw new AppError('Failed to update status', 500);
       }
 
+      console.log('✅ Status updated:', status, 'for application', applicationId);
       return this.formatApplication(data);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -379,6 +392,7 @@ class ApplicationService {
         .single();
 
       if (error) {
+        console.error('❌ Decision error:', error);
         throw new AppError('Failed to make decision', 500);
       }
 
@@ -453,6 +467,7 @@ class ApplicationService {
       highSchoolGraduationYear: app.high_school_graduation_year,
       highSchoolGpa: app.high_school_gpa,
       highSchoolCountry: app.high_school_country,
+      courses: app.courses || [], // ← ADD THIS
       
       // Eligibility
       eligibilityScore: app.eligibility_score,
@@ -468,6 +483,7 @@ class ApplicationService {
       submittedAt: app.submitted_at,
       reviewedAt: app.reviewed_at,
       reviewedBy: app.reviewed_by,
+      withdrawnAt: app.withdrawn_at,
       createdAt: app.created_at,
       updatedAt: app.updated_at,
     };

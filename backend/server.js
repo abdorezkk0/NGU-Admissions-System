@@ -7,18 +7,16 @@ const { testSupabaseConnection } = require('./shared/config/supabase');
 const logger = require('./shared/middleware/requestLogger');
 const errorHandler = require('./shared/middleware/errorHandler');
 const { apiLimiter } = require('./shared/middleware/rateLimiter');
-const storageRoutes = require('./modules/file-storage/routes/storageRoutes');
-const documentRoutes = require('./modules/documents/routes/documentRoutes');
 
 // Import routes
 const authRoutes = require('./modules/auth/routes/authRoutes');
+const applicationRoutes = require('./modules/applications/routes/applicationRoutes');
+const documentRoutes = require('./modules/documents/routes/documentRoutes');
+const storageRoutes = require('./modules/file-storage/routes/storageRoutes');
+const eligibilityRoutes = require('./modules/eligibility/routes/eligibilityRoutes'); // ← ADD THIS
 
 // Initialize Express app
 const app = express();
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use('/api/files', storageRoutes);
-app.use('/api/documents', documentRoutes);
 
 // ============================================
 // MIDDLEWARE
@@ -56,15 +54,22 @@ app.get('/api', (req, res) => {
       health: '/health',
       auth: '/api/auth',
       applications: '/api/applications',
+      programs: '/api/applications/programs',
       documents: '/api/documents',
-      notifications: '/api/notifications',
-      eligibility: '/api/eligibility',
+      files: '/api/files',
+      eligibility: '/api/eligibility', // ← ADD THIS
     },
   });
 });
 
+// API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/files', storageRoutes);
+app.use('/api/eligibility', eligibilityRoutes); // ← ADD THIS
 
+// 404 handler
 app.all('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -72,6 +77,7 @@ app.all('*', (req, res) => {
   });
 });
 
+// Global error handler
 app.use(errorHandler);
 
 // ============================================
@@ -82,14 +88,10 @@ const startServer = async () => {
   try {
     console.log('🚀 Starting NGU Admissions Backend...\n');
 
-    // Try MongoDB (don't fail if it doesn't connect)
-    try {
-      await connectDB();
-    } catch (error) {
-      console.log('⚠️  MongoDB not connected - Auth will work, but Applications/Documents won\'t\n');
-    }
-
-    // Test Supabase (critical for Auth)
+    // Connect to Supabase (using PostgreSQL)
+    await connectDB();
+    
+    // Test Supabase connection
     await testSupabaseConnection();
 
     const PORT = config.PORT;
@@ -99,7 +101,12 @@ const startServer = async () => {
       console.log(`🌐 Frontend URL: ${config.FRONTEND_URL}`);
       console.log(`\n📚 API Documentation: http://localhost:${PORT}/api`);
       console.log(`💚 Health Check: http://localhost:${PORT}/health`);
-      console.log(`🔐 Auth Endpoints: http://localhost:${PORT}/api/auth\n`);
+      console.log(`\n🔐 API Endpoints:`);
+      console.log(`   Auth:         http://localhost:${PORT}/api/auth`);
+      console.log(`   Applications: http://localhost:${PORT}/api/applications`);
+      console.log(`   Documents:    http://localhost:${PORT}/api/documents`);
+      console.log(`   Files:        http://localhost:${PORT}/api/files`);
+      console.log(`   Eligibility:  http://localhost:${PORT}/api/eligibility\n`); // ← ADD THIS
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);

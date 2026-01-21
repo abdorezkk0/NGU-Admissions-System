@@ -1,5 +1,5 @@
 const documentService = require('../services/documentService');
-const { validateCreate, validateVerify } = require('../documentValidation'); // ✅ FIXED PATH
+const { validateCreate, validateVerify } = require('../documentValidation');
 
 async function submit(req, res, next) {
   try {
@@ -8,7 +8,13 @@ async function submit(req, res, next) {
       return res.status(400).json({ message: check.message });
     }
 
-    const doc = await documentService.submitDocument(req.body);
+    // Get uploadedBy from authenticated user
+    const uploadedBy = req.user.id;
+
+    const doc = await documentService.submitDocument({
+      ...req.body,
+      uploadedBy,
+    });
 
     return res.status(201).json({
       message: 'Document submitted',
@@ -42,8 +48,7 @@ async function verify(req, res, next) {
     }
 
     const { id } = req.params;
-
-    const verifiedBy = req.body.verifiedBy || 'staff-unknown';
+    const verifiedBy = req.user.id;
 
     const updated = await documentService.verifyDocument({
       documentId: id,
@@ -71,9 +76,53 @@ async function required(req, res) {
   });
 }
 
+async function getAllDocuments(req, res, next) {
+  try {
+    if (!req.user || !['staff', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ 
+        message: 'Access denied. Staff or admin role required.' 
+      });
+    }
+
+    const { status, type, page = 1, limit = 20 } = req.query;
+    
+    const query = {};
+    if (status) query.status = status;
+    if (type) query.type = type;
+
+    const result = await documentService.listAll(query, { page, limit });
+
+    return res.json({
+      success: true,
+      message: 'Documents retrieved successfully',
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getMyDocuments(req, res, next) {
+  try {
+    const uploadedBy = req.user.id;
+
+    const documents = await documentService.listByUploader(uploadedBy);
+
+    return res.json({
+      success: true,
+      message: 'Your documents retrieved successfully',
+      data: documents,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   submit,
   getByApplication,
   verify,
   required,
+  getAllDocuments,
+  getMyDocuments,
 };

@@ -13,8 +13,6 @@ function validateCreate(payload = {}) {
   if (!applicationId) return { ok: false, message: 'applicationId is required' };
   if (!type) return { ok: false, message: 'type is required' };
   if (!fileId) return { ok: false, message: 'fileId is required' };
-  if (!uploadedBy) return { ok: false, message: 'uploadedBy is required' };
-
   return { ok: true };
 }
 
