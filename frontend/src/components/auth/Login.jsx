@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../../services/authService";
+import { login as loginService } from "../../services/authService";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -15,8 +17,20 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      navigate("/apply");
+      const response = await loginService(email, password);
+      
+      // ✅ Update auth context
+      login(response.user);
+      
+      // ✅ Redirect based on role
+      const role = response.user?.role;
+      if (role === 'admin') {
+        navigate("/admin/dashboard");
+      } else if (role === 'staff') {
+        navigate("/staff/dashboard");
+      } else {
+        navigate("/apply");
+      }
     } catch (err) {
       setError(err?.response?.data?.message || err.message || "Login failed");
     } finally {
@@ -79,6 +93,10 @@ export default function Login() {
       </form>
 
       {error && <div style={{ color: "crimson", marginTop: 12 }}>{error}</div>}
+      
+      <p style={{ marginTop: 16, textAlign: 'center' }}>
+        Don't have an account? <a href="/register">Register</a>
+      </p>
     </div>
   );
 }

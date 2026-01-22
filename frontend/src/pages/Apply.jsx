@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../services/api";
 
 export default function Apply() {
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [created, setCreated] = useState(null);
@@ -21,6 +23,20 @@ export default function Apply() {
 
   return (
     <div style={{ padding: 24, maxWidth: 520, margin: "0 auto" }}>
+      {/* ✅ ADDED: Back button */}
+      <Link 
+        to="/dashboard" 
+        style={{ 
+          display: 'inline-block',
+          marginBottom: 20,
+          color: '#0b1220',
+          textDecoration: 'none',
+          fontSize: 14,
+        }}
+      >
+        ← Back to Dashboard
+      </Link>
+
       <h1>Start Application</h1>
 
       <form onSubmit={submit} style={{ marginTop: 14 }}>
@@ -76,6 +92,23 @@ export default function Apply() {
           <b>Application Created ✅</b>
           <div>ID: {created.id}</div>
           <div>Status: {created.status}</div>
+          
+          {/* ✅ ADDED: Return to dashboard button after success */}
+          <button
+            onClick={() => navigate('/dashboard')}
+            style={{
+              marginTop: 15,
+              padding: '10px 20px',
+              background: '#0b1220',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 14,
+            }}
+          >
+            Return to Dashboard
+          </button>
         </div>
       )}
     </div>

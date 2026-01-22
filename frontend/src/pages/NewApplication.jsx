@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import "../styles/newApplication.css";
 
 export default function NewApplication() {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
   const [programs, setPrograms] = useState([]);
@@ -14,7 +16,16 @@ export default function NewApplication() {
     email: "",
     programId: "",
     gpa: "",
+    dateOfBirth: "",
+    gender: "male",
+    nationality: "Egyptian",
+    nationalId: "",
+    entryYear: new Date().getFullYear().toString(),
+    entrySemester: "fall",
   });
+
+  // ✅ NEW: Courses state
+  const [courses, setCourses] = useState([]);
 
   const [docs, setDocs] = useState([]);
   const [payment, setPayment] = useState({ cardNumber: "", expiry: "", cvc: "" });
@@ -37,7 +48,6 @@ export default function NewApplication() {
           setForm((f) => ({ ...f, programId: firstId }));
         }
       } catch {
-        // fallback
         setPrograms([
           { id: "cs", name: "B.Sc. Computer Science" },
           { id: "eng", name: "B.Eng. Engineering" },
@@ -55,13 +65,20 @@ export default function NewApplication() {
     setError("");
 
     try {
-      // create draft in DB
+      // ✅ UPDATED: Include courses in application creation
       const res = await api.post("/api/applications", {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
         programId: form.programId,
-        gpa: form.gpa,
+        highSchoolGpa: form.gpa,
+        dateOfBirth: form.dateOfBirth,
+        gender: form.gender,
+        nationality: form.nationality,
+        nationalId: form.nationalId,
+        entryYear: form.entryYear,
+        entrySemester: form.entrySemester,
+        courses: courses, // ✅ Send courses
       });
 
       const app = res.data?.data;
@@ -103,17 +120,12 @@ export default function NewApplication() {
     try {
       if (!applicationId) throw new Error("No application created yet");
 
-      // 1) Pay
-      await api.post(`/api/applications/${applicationId}/pay`, { amount: 50 });
-
-      // 2) Submit (backend will reject if not paid)
+      // ✅ Submit (backend will auto-pay and run eligibility check)
       await api.post(`/api/applications/${applicationId}/submit`);
 
-      alert("Submitted ✅ and saved in database!");
-      setStep(1);
-      setApplicationId(null);
-      setDocs([]);
-      setPayment({ cardNumber: "", expiry: "", cvc: "" });
+      alert("Application submitted successfully! Eligibility check running... ✅");
+      
+      navigate("/dashboard");
     } catch (e) {
       const msg = e?.response?.data?.message || e?.message || "Submit failed";
       setError(msg);
@@ -129,20 +141,23 @@ export default function NewApplication() {
         </div>
 
         <nav className="sidebar__nav">
-          <button className="sidebar__item sidebar__item--active">
+          <Link to="/dashboard" className="sidebar__item">
             <span className="sidebar__dot" /> Dashboard
-          </button>
-          <button className="sidebar__item">
+          </Link>
+          
+          <Link to="/apply" className="sidebar__item sidebar__item--active">
             <span className="sidebar__dot" /> My Applications
-          </button>
+          </Link>
         </nav>
 
         <div className="sidebar__footer">
           <button
             className="sidebar__signout"
             onClick={() => {
-              localStorage.removeItem("token");
-              window.location.href = "/login";
+              localStorage.removeItem("accessToken");
+              localStorage.removeItem("refreshToken");
+              localStorage.removeItem("user");
+              navigate("/login");
             }}
           >
             Sign Out
@@ -164,6 +179,20 @@ export default function NewApplication() {
         </header>
 
         <div className="content">
+          <Link 
+            to="/dashboard" 
+            style={{ 
+              display: 'inline-block',
+              marginBottom: 16,
+              color: '#0b1220',
+              textDecoration: 'none',
+              fontSize: 14,
+              fontWeight: 500,
+            }}
+          >
+            ← Back to Dashboard
+          </Link>
+
           <h1 className="pageTitle">New Application</h1>
           <Stepper step={step} />
 
@@ -179,6 +208,8 @@ export default function NewApplication() {
                 form={form}
                 setForm={setForm}
                 programs={programs}
+                courses={courses}
+                setCourses={setCourses}
                 onNext={handleContinueStep1}
               />
             )}
@@ -197,6 +228,7 @@ export default function NewApplication() {
               <StepReviewPay
                 form={form}
                 programName={selectedProgramName}
+                courses={courses}
                 docs={docs}
                 payment={payment}
                 setPayment={setPayment}
@@ -236,7 +268,31 @@ function Stepper({ step }) {
   );
 }
 
-function StepPersonalInfo({ form, setForm, programs, onNext }) {
+function StepPersonalInfo({ form, setForm, programs, courses, setCourses, onNext }) {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => currentYear + i);
+
+  // ✅ NEW: Course form state
+  const [newCourse, setNewCourse] = useState({
+    code: "",
+    name: "",
+    grade: "",
+  });
+
+  const addCourse = () => {
+    if (!newCourse.code || !newCourse.name || !newCourse.grade) {
+      alert("Please fill in all course fields");
+      return;
+    }
+
+    setCourses([...courses, { ...newCourse, id: Date.now() }]);
+    setNewCourse({ code: "", name: "", grade: "" });
+  };
+
+  const removeCourse = (id) => {
+    setCourses(courses.filter(c => c.id !== id));
+  };
+
   return (
     <div>
       <div className="card__header">
@@ -246,39 +302,87 @@ function StepPersonalInfo({ form, setForm, programs, onNext }) {
 
       <div className="grid2">
         <div className="field">
-          <label>First Name</label>
+          <label>First Name *</label>
           <input
             value={form.firstName}
             onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))}
             placeholder="First name"
+            required
           />
         </div>
 
         <div className="field">
-          <label>Last Name</label>
+          <label>Last Name *</label>
           <input
             value={form.lastName}
             onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))}
             placeholder="Last name"
+            required
           />
         </div>
       </div>
 
       <div className="field">
-        <label>Email Address</label>
+        <label>Email Address *</label>
         <input
           value={form.email}
           onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
           placeholder="email@example.com"
           type="email"
+          required
         />
       </div>
 
       <div className="field">
-        <label>Intended Program</label>
+        <label>Date of Birth *</label>
+        <input
+          type="date"
+          value={form.dateOfBirth}
+          onChange={(e) => setForm((p) => ({ ...p, dateOfBirth: e.target.value }))}
+          required
+        />
+      </div>
+
+      <div className="grid2">
+        <div className="field">
+          <label>Gender *</label>
+          <select
+            value={form.gender}
+            onChange={(e) => setForm((p) => ({ ...p, gender: e.target.value }))}
+            required
+          >
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </div>
+
+        <div className="field">
+          <label>Nationality *</label>
+          <input
+            value={form.nationality}
+            onChange={(e) => setForm((p) => ({ ...p, nationality: e.target.value }))}
+            placeholder="Egyptian"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label>National ID *</label>
+        <input
+          value={form.nationalId}
+          onChange={(e) => setForm((p) => ({ ...p, nationalId: e.target.value }))}
+          placeholder="29912345678901"
+          required
+        />
+      </div>
+
+      <div className="field">
+        <label>Intended Program *</label>
         <select
           value={form.programId}
           onChange={(e) => setForm((p) => ({ ...p, programId: e.target.value }))}
+          required
         >
           {programs.map((p) => (
             <option key={p.id} value={p.id}>
@@ -288,14 +392,147 @@ function StepPersonalInfo({ form, setForm, programs, onNext }) {
         </select>
       </div>
 
+      <div className="grid2">
+        <div className="field">
+          <label>Entry Year *</label>
+          <select
+            value={form.entryYear}
+            onChange={(e) => setForm((p) => ({ ...p, entryYear: e.target.value }))}
+            required
+          >
+            {years.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label>Entry Semester *</label>
+          <select
+            value={form.entrySemester}
+            onChange={(e) => setForm((p) => ({ ...p, entrySemester: e.target.value }))}
+            required
+          >
+            <option value="fall">Fall</option>
+            <option value="spring">Spring</option>
+            <option value="summer">Summer</option>
+          </select>
+        </div>
+      </div>
+
       <div className="field">
-        <label>High School GPA</label>
+        <label>High School GPA *</label>
         <input
+          type="number"
+          step="0.01"
+          min="0"
+          max="4.0"
           value={form.gpa}
           onChange={(e) => setForm((p) => ({ ...p, gpa: e.target.value }))}
           placeholder="4.0"
+          required
         />
       </div>
+
+      {/* ✅ NEW: Courses Section */}
+      <div className="sectionTitle" style={{ marginTop: 24 }}>
+        📚 High School Courses Taken
+      </div>
+      
+      <div style={{ background: '#f8f9fa', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+        <div className="grid2" style={{ marginBottom: 12 }}>
+          <div className="field">
+            <label>Course Code</label>
+            <input
+              value={newCourse.code}
+              onChange={(e) => setNewCourse({ ...newCourse, code: e.target.value })}
+              placeholder="MATH-101"
+            />
+          </div>
+
+          <div className="field">
+            <label>Course Name</label>
+            <input
+              value={newCourse.name}
+              onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
+              placeholder="Calculus I"
+            />
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Grade</label>
+          <select
+            value={newCourse.grade}
+            onChange={(e) => setNewCourse({ ...newCourse, grade: e.target.value })}
+          >
+            <option value="">Select Grade</option>
+            <option value="A+">A+ (97-100)</option>
+            <option value="A">A (93-96)</option>
+            <option value="A-">A- (90-92)</option>
+            <option value="B+">B+ (87-89)</option>
+            <option value="B">B (83-86)</option>
+            <option value="B-">B- (80-82)</option>
+            <option value="C+">C+ (77-79)</option>
+            <option value="C">C (73-76)</option>
+            <option value="C-">C- (70-72)</option>
+            <option value="D">D (60-69)</option>
+            <option value="F">F (Below 60)</option>
+          </select>
+        </div>
+
+        <button 
+          type="button"
+          className="btnSecondary" 
+          onClick={addCourse}
+          style={{ marginTop: 8 }}
+        >
+          + Add Course
+        </button>
+      </div>
+
+      {/* ✅ Display Added Courses */}
+      {courses.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="sectionTitle">Added Courses ({courses.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {courses.map((course) => (
+              <div 
+                key={course.id} 
+                style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: 12,
+                  background: '#fff',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 8,
+                }}
+              >
+                <div>
+                  <strong>{course.code}</strong> - {course.name}
+                  <span style={{ marginLeft: 12, color: '#666' }}>Grade: {course.grade}</span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => removeCourse(course.id)}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer',
+                    fontSize: 18,
+                  }}
+                  title="Remove course"
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="actions actions--right">
         <button className="btnPrimary" onClick={onNext}>
@@ -378,7 +615,9 @@ function StepDocuments({ docs, onFiles, onRemove, onBack, onNext }) {
   );
 }
 
-function StepReviewPay({ form, programName, docs, payment, setPayment, onBack, onSubmit }) {
+function StepReviewPay({ form, programName, courses, docs, payment, setPayment, onBack, onSubmit }) {
+  const displaySemester = form.entrySemester.charAt(0).toUpperCase() + form.entrySemester.slice(1);
+
   return (
     <div>
       <div className="card__header">
@@ -401,11 +640,51 @@ function StepReviewPay({ form, programName, docs, payment, setPayment, onBack, o
             <div>{programName}</div>
           </div>
           <div className="summaryRow">
+            <div className="muted">National ID:</div>
+            <div>{form.nationalId}</div>
+          </div>
+          <div className="summaryRow">
+            <div className="muted">Entry:</div>
+            <div>{displaySemester} {form.entryYear}</div>
+          </div>
+          <div className="summaryRow">
+            <div className="muted">GPA:</div>
+            <div>{form.gpa}</div>
+          </div>
+          <div className="summaryRow">
+            <div className="muted">Courses:</div>
+            <div>{courses.length} Courses</div>
+          </div>
+          <div className="summaryRow">
             <div className="muted">Documents:</div>
             <div>{docs.length} Files Attached</div>
           </div>
         </div>
       </div>
+
+      {/* ✅ Show courses list */}
+      {courses.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div className="sectionTitle">Courses Taken</div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {courses.map((course) => (
+              <div 
+                key={course.id}
+                style={{ 
+                  padding: 10,
+                  background: '#f8f9fa',
+                  borderRadius: 6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span><strong>{course.code}</strong> - {course.name}</span>
+                <span style={{ color: '#666' }}>Grade: {course.grade}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="sectionTitle" style={{ marginTop: 14 }}>Payment Details</div>
 
@@ -414,44 +693,15 @@ function StepReviewPay({ form, programName, docs, payment, setPayment, onBack, o
           <div className="feeIcon">💳</div>
           <div>
             <div className="feeTitle">Application Fee</div>
-            <div className="feeSub">Non-refundable processing fee</div>
+            <div className="feeSub">Non-refundable processing fee (Auto-processed on submit)</div>
           </div>
         </div>
         <div className="feeAmount">$50.00</div>
       </div>
 
-      <div className="field">
-        <label>Card Number</label>
-        <input
-          value={payment.cardNumber}
-          onChange={(e) => setPayment((p) => ({ ...p, cardNumber: e.target.value }))}
-          placeholder="0000 0000 0000 0000"
-        />
-      </div>
-
-      <div className="grid2">
-        <div className="field">
-          <label>Expiry</label>
-          <input
-            value={payment.expiry}
-            onChange={(e) => setPayment((p) => ({ ...p, expiry: e.target.value }))}
-            placeholder="MM/YY"
-          />
-        </div>
-
-        <div className="field">
-          <label>CVC</label>
-          <input
-            value={payment.cvc}
-            onChange={(e) => setPayment((p) => ({ ...p, cvc: e.target.value }))}
-            placeholder="123"
-          />
-        </div>
-      </div>
-
-      <div className="infoBox">
-        ℹ️ By submitting, you confirm that all information provided is accurate.
-        False information may result in immediate rejection.
+      <div className="infoBox" style={{ marginTop: 20 }}>
+        ℹ️ Payment will be processed automatically when you submit. By submitting, you confirm that all information provided is accurate.
+        Eligibility check will run automatically after submission.
       </div>
 
       <div className="actions">
@@ -459,7 +709,7 @@ function StepReviewPay({ form, programName, docs, payment, setPayment, onBack, o
           Back
         </button>
         <button className="btnGold" onClick={onSubmit}>
-          Submit & Pay
+          Submit Application
         </button>
       </div>
     </div>

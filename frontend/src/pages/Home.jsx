@@ -1,13 +1,13 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import "../styles/home.css";
 import heroImg from "../assets/images/hero.jpg";
-
-
 import logo from "../assets/images/logo.png";
 
-
 export default function Home() {
+  const { isAuthenticated, user } = useAuth();
+
   return (
     <div className="landing">
       {/* NAVBAR */}
@@ -18,13 +18,24 @@ export default function Home() {
         </div>
 
         <div className="landing__navRight">
-          <Link className="landing__navLink" to="/staff/login">
-            Staff Portal
+          <Link className="landing__navLink" to="/login">
+            {isAuthenticated ? 'Dashboard' : 'Staff Portal'}
           </Link>
 
-          <Link className="btn btn--dark" to="/apply">
-            Apply Now
-          </Link>
+          {isAuthenticated ? (
+            <Link className="btn btn--dark" to="/dashboard">
+              My Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link className="btn btn--ghost" to="/login" style={{ marginRight: 10 }}>
+                Login
+              </Link>
+              <Link className="btn btn--dark" to="/apply">
+                Apply Now
+              </Link>
+            </>
+          )}
         </div>
       </header>
 
@@ -43,6 +54,7 @@ export default function Home() {
           </p>
 
           <div className="landing__actions">
+            {/* ✅ Changed from /application/new to /apply */}
             <Link className="btn btn--gold" to="/apply">
               Start Application <span className="arrow">→</span>
             </Link>

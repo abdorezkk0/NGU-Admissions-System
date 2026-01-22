@@ -239,8 +239,152 @@ class ApplicationService {
   }
 
   /**
+   * ✅ NEW: Run eligibility check based on courses and GPA with DEBUG LOGGING
+   */
+  async runEligibilityCheck(applicationId) {
+    try {
+      const { data: app, error } = await supabase
+        .from('applications')
+        .select('*, programs(*)')
+        .eq('id', applicationId)
+        .single();
+
+      if (error || !app) {
+        throw new AppError('Application not found', 404);
+      }
+
+      // ✅ ADD LOGGING
+      console.log('📊 Running eligibility check for:', applicationId);
+      console.log('📝 Application data:', {
+        gpa: app.high_school_gpa,
+        courses: app.courses,
+        coursesCount: app.courses?.length || 0
+      });
+
+      // Get program requirements
+      const { data: requirements } = await supabase
+        .from('program_requirements')
+        .select('*')
+        .eq('program_id', app.program_id)
+        .maybeSingle();
+
+      // ✅ ADD LOGGING
+      console.log('📋 Program requirements:', {
+        minGPA: requirements?.min_gpa,
+        requiredCourses: requirements?.required_courses
+      });
+
+      let eligibilityStatus = 'pending';
+      let eligibilityScore = 0;
+      let reasons = [];
+
+      // Basic checks
+      const gpa = parseFloat(app.high_school_gpa) || 0;
+      const minGPA = requirements?.min_gpa || 2.5;
+      
+      // 1. GPA Check (40 points)
+      if (gpa >= minGPA) {
+        eligibilityScore += 40;
+        reasons.push(`GPA ${gpa} meets minimum ${minGPA}`);
+        console.log('✅ GPA Check: +40 points');
+      } else {
+        reasons.push(`GPA ${gpa} below minimum ${minGPA}`);
+        console.log('❌ GPA Check: 0 points (GPA too low)');
+      }
+
+      // 2. Courses Check (40 points)
+      const courses = app.courses || [];
+      const requiredCourses = requirements?.required_courses || [];
+      
+      console.log('📚 Courses check:', {
+        studentCourses: courses.length,
+        requiredCourses: requiredCourses.length
+      });
+      
+      if (requiredCourses.length > 0) {
+        const takenCodes = courses.map(c => c.code?.toUpperCase());
+        const requiredCodes = requiredCourses.map(r => r.toUpperCase());
+        const matchedCourses = requiredCodes.filter(rc => takenCodes.includes(rc));
+        
+        const coursePercentage = (matchedCourses.length / requiredCodes.length) * 100;
+        const coursePoints = Math.round((coursePercentage / 100) * 40);
+        
+        eligibilityScore += coursePoints;
+        reasons.push(`${matchedCourses.length}/${requiredCodes.length} required courses taken`);
+        console.log(`✅ Course Match: +${coursePoints} points (${matchedCourses.length}/${requiredCodes.length})`);
+      } else {
+        // No specific course requirements - award points based on quantity
+        if (courses.length >= 5) {
+          eligibilityScore += 40;
+          reasons.push(`${courses.length} courses provided`);
+          console.log(`✅ Courses: +40 points (${courses.length} courses)`);
+        } else if (courses.length > 0) {
+          const coursePoints = Math.round((courses.length / 5) * 40);
+          eligibilityScore += coursePoints;
+          reasons.push(`${courses.length} courses (minimum 5 recommended)`);
+          console.log(`⚠️ Courses: +${coursePoints} points (${courses.length}/5 courses)`);
+        } else {
+          reasons.push('No courses provided');
+          console.log('❌ Courses: 0 points (no courses)');
+        }
+      }
+
+      // 3. Application Completeness (20 points)
+      const hasAllFields = app.first_name && app.last_name && app.email && 
+                          app.date_of_birth && app.national_id && app.high_school_gpa;
+      if (hasAllFields) {
+        eligibilityScore += 20;
+        reasons.push('Application complete');
+        console.log('✅ Completeness: +20 points');
+      } else {
+        eligibilityScore += 10;
+        reasons.push('Application partially complete');
+        console.log('⚠️ Completeness: +10 points');
+      }
+
+      // Determine status based on score
+      if (eligibilityScore >= 80) {
+        eligibilityStatus = 'eligible';
+      } else if (eligibilityScore >= 60) {
+        eligibilityStatus = 'review_required';
+      } else {
+        eligibilityStatus = 'not_eligible';
+      }
+
+      console.log('🎯 Final Score:', eligibilityScore, '/', 100);
+      console.log('📊 Status:', eligibilityStatus);
+      console.log('📝 Reasons:', reasons.join('; '));
+
+      // Update application with eligibility results
+      const { data: updated, error: updateError } = await supabase
+        .from('applications')
+        .update({
+          eligibility_status: eligibilityStatus,
+          eligibility_score: eligibilityScore,
+          eligibility_notes: reasons.join('; '),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', applicationId)
+        .select('*, programs(*)')
+        .single();
+
+      if (updateError) {
+        console.error('❌ Eligibility update error:', updateError);
+        throw new AppError('Failed to update eligibility', 500);
+      }
+
+      console.log(`✅ Eligibility check completed: ${eligibilityStatus} (${eligibilityScore}/100)`);
+      return this.formatApplication(updated);
+    } catch (error) {
+      console.error('❌ Eligibility check error:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError('Eligibility check failed', 500);
+    }
+  }
+
+  /**
    * Submit application for review
-   * ✅ Requires fee_paid = true
+   * ✅ UPDATED: Auto-pays on submit + runs eligibility check
    */
   async submitApplication(applicationId, userId, userRole) {
     try {
@@ -250,19 +394,21 @@ class ApplicationService {
         throw new AppError('Application already submitted', 400);
       }
 
-      // ✅ MUST pay before submit
-      if (!application.feePaid) {
-        throw new AppError('Payment required before submission', 400);
-      }
-
       // Validate required fields
       this.validateApplicationForSubmission(application);
+
+      // ✅ Auto-pay on submit
+      const paymentRef = `PAY-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 
       const { data, error } = await supabase
         .from('applications')
         .update({
           status: 'submitted',
           submitted_at: new Date().toISOString(),
+          fee_paid: true,
+          fee_amount: 50.00,
+          payment_ref: paymentRef,
+          paid_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', applicationId)
@@ -274,7 +420,17 @@ class ApplicationService {
         throw new AppError('Failed to submit application', 500);
       }
 
-      console.log('✅ Application submitted:', data.id);
+      console.log('✅ Application submitted and auto-paid:', data.id);
+
+      // ✅ Run eligibility check after submission
+      try {
+        await this.runEligibilityCheck(applicationId);
+        console.log('✅ Eligibility check completed for application:', applicationId);
+      } catch (eligError) {
+        console.error('⚠️ Eligibility check failed (non-critical):', eligError.message);
+        // Don't fail the submission if eligibility check fails
+      }
+
       return this.formatApplication(data);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -345,8 +501,6 @@ class ApplicationService {
       throw new AppError('Application withdrawal failed', 500);
     }
   }
-
-  // ===== rest of your functions remain same (getAllApplications, updateStatus, makeDecision, validate, format) =====
 
   async getAllApplications(filters = {}, page = 1, limit = 20) {
     try {
@@ -520,8 +674,10 @@ class ApplicationService {
       paymentRef: app.payment_ref,
       paidAt: app.paid_at,
 
+      // ✅ Eligibility (updated to include notes)
       eligibilityScore: app.eligibility_score,
       eligibilityStatus: app.eligibility_status,
+      eligibilityNotes: app.eligibility_notes,
 
       decision: app.decision,
       decisionDate: app.decision_date,

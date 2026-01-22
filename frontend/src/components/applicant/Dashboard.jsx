@@ -1,32 +1,39 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import "../../styles/components/applicant/dashboard.css";
+import { useAuth } from "../../context/AuthContext";
+import api from "../../services/api";
+import "../../styles/components/dashboard.css";
 import logo from "../../assets/images/logo.png";
 
 export default function ApplicantDashboard() {
-  // later you will get this from auth context / API
-  const user = { name: "Alice Johnson", role: "Applicant" };
+  const { user, logout } = useAuth();
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // later you will get these from API
-  const summary = {
-    status: "Under Review",
-    submittedAgo: "Submitted 3 days ago",
-    docsVerified: "2/3 Verified",
-    docsHint: "1 Action required",
-    eligible: true,
-    eligibleHint: "Automated check passed",
+  useEffect(() => {
+    loadApplications();
+  }, []);
+
+  const loadApplications = async () => {
+    try {
+      const response = await api.get('/api/applications/my-applications');
+      const apps = response.data?.data || [];
+      setApplications(apps);
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to load applications:', error);
+      setLoading(false);
+    }
   };
 
-  const applications = [
-    {
-      id: "APP-2024-001",
-      program: "B.Sc. Computer Science",
-      dept: "Department of Engineering",
-      status: "Under Review",
-      progress: 60,
-      alert: "Doc re-upload needed",
-    },
-  ];
+  const summary = {
+    status: applications.length > 0 ? applications[0].status : "No Applications",
+    submittedAgo: applications.length > 0 ? "Recently submitted" : "N/A",
+    docsVerified: "0/3 Verified",
+    docsHint: "Upload required",
+    eligible: false,
+    eligibleHint: "Pending evaluation",
+  };
 
   return (
     <div className="appDash">
@@ -38,19 +45,19 @@ export default function ApplicantDashboard() {
         </div>
 
         <nav className="appDash__nav">
-          <Link className="appDash__navItem appDash__navItem--active" to="/applicant/dashboard">
+          <Link className="appDash__navItem appDash__navItem--active" to="/dashboard">
             <span className="appDash__icon">▦</span>
             Dashboard
           </Link>
 
-          <Link className="appDash__navItem" to="/applicant/applications">
+          <Link className="appDash__navItem" to="/apply">
             <span className="appDash__icon">▤</span>
             My Applications
           </Link>
         </nav>
 
         <div className="appDash__sidebarFooter">
-          <button className="appDash__signout" type="button">
+          <button className="appDash__signout" type="button" onClick={logout}>
             ⟵ Sign Out
           </button>
         </div>
@@ -66,8 +73,8 @@ export default function ApplicantDashboard() {
 
             <div className="appDash__profile">
               <div className="appDash__profileText">
-                <div className="appDash__profileName">{user.name}</div>
-                <div className="appDash__profileRole">{user.role}</div>
+                <div className="appDash__profileName">{user?.fullName || user?.email || 'User'}</div>
+                <div className="appDash__profileRole">Applicant</div>
               </div>
               <div className="appDash__avatar" aria-hidden="true">👤</div>
             </div>
@@ -78,12 +85,13 @@ export default function ApplicantDashboard() {
         <section className="appDash__content">
           <div className="appDash__heroRow">
             <div>
-              <h1 className="appDash__title">Welcome back, {user.name.split(" ")[0]}</h1>
+              <h1 className="appDash__title">Welcome back, {user?.fullName?.split(' ')[0] || 'Student'}</h1>
               <p className="appDash__subtitle">
                 Track your application progress and manage your documents.
               </p>
             </div>
 
+            {/* ✅ FIXED: Changed from /application/new to /apply */}
             <Link className="appDash__primaryBtn" to="/apply">
               ＋ New Application
             </Link>
@@ -115,7 +123,7 @@ export default function ApplicantDashboard() {
                 <div className="appDash__miniIcon">✅</div>
               </div>
               <div className={`appDash__cardValue ${summary.eligible ? "ok" : "bad"}`}>
-                {summary.eligible ? "Eligible" : "Not Eligible"}
+                {summary.eligible ? "Eligible" : "Pending"}
               </div>
               <div className="appDash__cardHint">{summary.eligibleHint}</div>
             </div>
@@ -124,43 +132,59 @@ export default function ApplicantDashboard() {
           {/* APPLICATIONS LIST */}
           <h2 className="appDash__sectionTitle">My Applications</h2>
 
-          <div className="appDash__appList">
-            {applications.map((a) => (
-              <div className="appDash__appCard" key={a.id}>
-                <div className="appDash__appLeft">
-                  <div className="appDash__statusRow">
-                    <span className="appDash__statusPill">{a.status}</span>
-                    <span className="appDash__appId">ID: {a.id}</span>
-                  </div>
-
-                  <div className="appDash__appProgram">{a.program}</div>
-                  <div className="appDash__appDept">{a.dept}</div>
-
-                  <div className="appDash__progressRow">
-                    <div className="appDash__progressLabel">Application Progress</div>
-                    <div className="appDash__progressPercent">{a.progress}%</div>
-                  </div>
-
-                  <div className="appDash__progressBar">
-                    <div className="appDash__progressFill" style={{ width: `${a.progress}%` }} />
-                  </div>
+          {loading ? (
+            <div>Loading applications...</div>
+          ) : (
+            <div className="appDash__appList">
+              {applications.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', opacity: 0.6 }}>
+                  <p>No applications yet. Click "New Application" to get started!</p>
                 </div>
+              ) : (
+                applications.map((app) => (
+                  <div className="appDash__appCard" key={app.id}>
+                    <div className="appDash__appLeft">
+                      <div className="appDash__statusRow">
+                        <span className="appDash__statusPill">{app.status}</span>
+                        <span className="appDash__appId">ID: {app.id?.slice(0, 8)}...</span>
+                      </div>
 
-                <div className="appDash__appRight">
-                  <button className="appDash__secondaryBtn" type="button">
-                    View Details →
-                  </button>
+                      <div className="appDash__appProgram">
+                        {app.programName || 'Program'}
+                      </div>
+                      <div className="appDash__appDept">
+                        {app.firstName} {app.lastName}
+                      </div>
 
-                  {a.alert && (
-                    <div className="appDash__alert">
-                      <span className="appDash__alertIcon">⛔</span>
-                      {a.alert}
+                      <div className="appDash__progressRow">
+                        <div className="appDash__progressLabel">Application Progress</div>
+                        <div className="appDash__progressPercent">
+                          {app.status === 'draft' ? '30%' : app.status === 'submitted' ? '60%' : '100%'}
+                        </div>
+                      </div>
+
+                      <div className="appDash__progressBar">
+                        <div 
+                          className="appDash__progressFill" 
+                          style={{ 
+                            width: app.status === 'draft' ? '30%' : app.status === 'submitted' ? '60%' : '100%' 
+                          }} 
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+
+                    <div className="appDash__appRight">
+                      <Link to={`/applications/${app.id}`}>
+                        <button className="appDash__secondaryBtn" type="button">
+                          View Details →
+                        </button>
+                      </Link>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </section>
 
         {/* floating chat/help */}
