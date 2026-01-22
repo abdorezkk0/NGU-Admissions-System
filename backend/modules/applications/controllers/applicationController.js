@@ -19,6 +19,29 @@ exports.createApplication = catchAsync(async (req, res, next) => {
 });
 
 /**
+ * Pay application fee
+ */
+exports.payApplication = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  // NEVER store card details. Only store paymentRef + paid flag.
+  const { amount } = req.body;
+
+  const application = await applicationService.payApplication(
+    id,
+    userId,
+    Number(amount || 50)
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'Payment successful',
+    data: application,
+  });
+});
+
+/**
  * Get user's applications
  */
 exports.getMyApplications = catchAsync(async (req, res, next) => {
@@ -74,7 +97,7 @@ exports.updateApplication = catchAsync(async (req, res, next) => {
 });
 
 /**
- * Submit application for review
+ * Submit application for review (requires payment)
  */
 exports.submitApplication = catchAsync(async (req, res, next) => {
   const { id } = req.params;
@@ -137,8 +160,7 @@ exports.getAllApplications = catchAsync(async (req, res, next) => {
     entryYear: entryYear ? parseInt(entryYear) : undefined,
   };
 
-  // Remove undefined filters
-  Object.keys(filters).forEach(key => 
+  Object.keys(filters).forEach(key =>
     filters[key] === undefined && delete filters[key]
   );
 
@@ -180,6 +202,27 @@ exports.updateApplicationStatus = catchAsync(async (req, res, next) => {
     data: application,
   });
 });
+/**
+ * Pay application fee
+ */
+exports.payApplication = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const { amount } = req.body;
+
+  const application = await applicationService.payApplication(
+    id,
+    userId,
+    Number(amount || 50)
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'Payment successful',
+    data: application,
+  });
+});
+
 
 /**
  * Make admission decision (staff/admin only)

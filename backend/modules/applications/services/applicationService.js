@@ -1,5 +1,6 @@
 const { supabase } = require('../../../shared/config/supabase');
 const AppError = require('../../../shared/utils/appError');
+const crypto = require('crypto');
 
 class ApplicationService {
   /**
@@ -10,6 +11,8 @@ class ApplicationService {
       const newApplication = {
         user_id: userId,
         status: 'draft',
+
+        // Personal Info
         first_name: applicationData.firstName,
         last_name: applicationData.lastName,
         email: applicationData.email,
@@ -18,22 +21,37 @@ class ApplicationService {
         gender: applicationData.gender,
         nationality: applicationData.nationality,
         national_id: applicationData.nationalId,
+
+        // Academic
         program_id: applicationData.programId,
         entry_year: applicationData.entryYear,
         entry_semester: applicationData.entrySemester,
+
+        // Address
         address_line1: applicationData.addressLine1,
         address_line2: applicationData.addressLine2,
         city: applicationData.city,
         state: applicationData.state,
         postal_code: applicationData.postalCode,
         country: applicationData.country,
+
+        // Education
         high_school_name: applicationData.highSchoolName,
         high_school_graduation_year: applicationData.highSchoolGraduationYear,
         high_school_gpa: applicationData.highSchoolGpa,
         high_school_country: applicationData.highSchoolCountry,
-        courses: applicationData.courses || [], // ← ADD THIS
+
+        courses: applicationData.courses || [],
+
+        // Eligibility / Decision
         eligibility_status: 'pending',
         decision: 'pending',
+
+        // ✅ Payment fields (Supabase columns)
+        fee_paid: false,
+        fee_amount: 0,
+        payment_ref: null,
+        paid_at: null,
       };
 
       const { data, error } = await supabase
@@ -52,6 +70,60 @@ class ApplicationService {
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw new AppError('Application creation failed', 500);
+    }
+  }
+
+  /**
+   * ✅ Pay application fee (marks fee_paid=true)
+   * Fake payment for now (later replace with Stripe/Paymob transaction id)
+   */
+  async payApplication(applicationId, userId, amount = 50) {
+    try {
+      // Verify ownership + check not already paid
+      const { data: existing, error: findErr } = await supabase
+        .from('applications')
+        .select('id, user_id, fee_paid')
+        .eq('id', applicationId)
+        .single();
+
+      if (findErr || !existing) {
+        throw new AppError('Application not found', 404);
+      }
+
+      if (existing.user_id !== userId) {
+        throw new AppError('Not authorized to pay for this application', 403);
+      }
+
+      if (existing.fee_paid) {
+        throw new AppError('Application fee already paid', 400);
+      }
+
+      const paymentRef = `PAY-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+
+      const { data, error } = await supabase
+        .from('applications')
+        .update({
+          fee_paid: true,
+          fee_amount: Number(amount || 50),
+          payment_ref: paymentRef,
+          paid_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', applicationId)
+        .eq('user_id', userId)
+        .select('*, programs(*)')
+        .single();
+
+      if (error) {
+        console.error('❌ Payment update error:', error);
+        throw new AppError('Failed to record payment', 500);
+      }
+
+      console.log('✅ Payment recorded for application:', data.id);
+      return this.formatApplication(data);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError('Payment failed', 500);
     }
   }
 
@@ -111,10 +183,8 @@ class ApplicationService {
    */
   async updateApplication(applicationId, userId, updates, userRole) {
     try {
-      // Get existing application
       const existing = await this.getApplicationById(applicationId, userId, userRole);
 
-      // Only allow updates to draft applications (unless staff/admin)
       if (existing.status !== 'draft' && userRole === 'applicant') {
         throw new AppError('Cannot update submitted application', 400);
       }
@@ -140,12 +210,11 @@ class ApplicationService {
         high_school_graduation_year: updates.highSchoolGraduationYear,
         high_school_gpa: updates.highSchoolGpa,
         high_school_country: updates.highSchoolCountry,
-        courses: updates.courses, // ← ADD THIS
+        courses: updates.courses,
         updated_at: new Date().toISOString(),
       };
 
-      // Remove undefined values
-      Object.keys(updateData).forEach(key => 
+      Object.keys(updateData).forEach(key =>
         updateData[key] === undefined && delete updateData[key]
       );
 
@@ -171,6 +240,7 @@ class ApplicationService {
 
   /**
    * Submit application for review
+   * ✅ Requires fee_paid = true
    */
   async submitApplication(applicationId, userId, userRole) {
     try {
@@ -178,6 +248,11 @@ class ApplicationService {
 
       if (application.status !== 'draft') {
         throw new AppError('Application already submitted', 400);
+      }
+
+      // ✅ MUST pay before submit
+      if (!application.feePaid) {
+        throw new AppError('Payment required before submission', 400);
       }
 
       // Validate required fields
@@ -271,30 +346,19 @@ class ApplicationService {
     }
   }
 
-  /**
-   * Get all applications (staff/admin only) with pagination
-   */
+  // ===== rest of your functions remain same (getAllApplications, updateStatus, makeDecision, validate, format) =====
+
   async getAllApplications(filters = {}, page = 1, limit = 20) {
     try {
       let query = supabase
         .from('applications')
         .select('*, programs(*)', { count: 'exact' });
 
-      // Apply filters
-      if (filters.status) {
-        query = query.eq('status', filters.status);
-      }
-      if (filters.decision) {
-        query = query.eq('decision', filters.decision);
-      }
-      if (filters.programId) {
-        query = query.eq('program_id', filters.programId);
-      }
-      if (filters.entryYear) {
-        query = query.eq('entry_year', filters.entryYear);
-      }
+      if (filters.status) query = query.eq('status', filters.status);
+      if (filters.decision) query = query.eq('decision', filters.decision);
+      if (filters.programId) query = query.eq('program_id', filters.programId);
+      if (filters.entryYear) query = query.eq('entry_year', filters.entryYear);
 
-      // Pagination
       const offset = (page - 1) * limit;
       query = query
         .order('submitted_at', { ascending: false, nullsFirst: false })
@@ -323,13 +387,10 @@ class ApplicationService {
     }
   }
 
-  /**
-   * Update application status (staff/admin only)
-   */
   async updateApplicationStatus(applicationId, status, userId) {
     try {
       const validStatuses = [
-        'draft', 'submitted', 'under_review', 
+        'draft', 'submitted', 'under_review',
         'pending_documents', 'accepted', 'rejected', 'withdrawn'
       ];
 
@@ -362,9 +423,6 @@ class ApplicationService {
     }
   }
 
-  /**
-   * Make admission decision (staff/admin only)
-   */
   async makeDecision(applicationId, decision, notes, userId) {
     try {
       const validDecisions = ['accepted', 'rejected', 'waitlisted'];
@@ -404,9 +462,6 @@ class ApplicationService {
     }
   }
 
-  /**
-   * Validate application has required fields for submission
-   */
   validateApplicationForSubmission(application) {
     const required = [
       'firstName', 'lastName', 'email', 'dateOfBirth',
@@ -417,23 +472,16 @@ class ApplicationService {
     const missing = required.filter(field => !application[field]);
 
     if (missing.length > 0) {
-      throw new AppError(
-        `Missing required fields: ${missing.join(', ')}`,
-        400
-      );
+      throw new AppError(`Missing required fields: ${missing.join(', ')}`, 400);
     }
   }
 
-  /**
-   * Format application for response
-   */
   formatApplication(app) {
     return {
       id: app.id,
       userId: app.user_id,
       status: app.status,
-      
-      // Personal Info
+
       firstName: app.first_name,
       lastName: app.last_name,
       email: app.email,
@@ -442,16 +490,14 @@ class ApplicationService {
       gender: app.gender,
       nationality: app.nationality,
       nationalId: app.national_id,
-      
-      // Address
+
       addressLine1: app.address_line1,
       addressLine2: app.address_line2,
       city: app.city,
       state: app.state,
       postalCode: app.postal_code,
       country: app.country,
-      
-      // Academic
+
       programId: app.program_id,
       program: app.programs ? {
         id: app.programs.id,
@@ -461,25 +507,27 @@ class ApplicationService {
       } : null,
       entryYear: app.entry_year,
       entrySemester: app.entry_semester,
-      
-      // Education
+
       highSchoolName: app.high_school_name,
       highSchoolGraduationYear: app.high_school_graduation_year,
       highSchoolGpa: app.high_school_gpa,
       highSchoolCountry: app.high_school_country,
-      courses: app.courses || [], // ← ADD THIS
-      
-      // Eligibility
+      courses: app.courses || [],
+
+      // ✅ Payment
+      feePaid: app.fee_paid,
+      feeAmount: app.fee_amount,
+      paymentRef: app.payment_ref,
+      paidAt: app.paid_at,
+
       eligibilityScore: app.eligibility_score,
       eligibilityStatus: app.eligibility_status,
-      
-      // Decision
+
       decision: app.decision,
       decisionDate: app.decision_date,
       decisionBy: app.decision_by,
       decisionNotes: app.decision_notes,
-      
-      // Metadata
+
       submittedAt: app.submitted_at,
       reviewedAt: app.reviewed_at,
       reviewedBy: app.reviewed_by,
